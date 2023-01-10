@@ -1,0 +1,34 @@
+{
+  "glimpse": [
+    {
+      "host": "172.31.3.105",
+      "port": "31803",
+      "user": "aaa",
+      "password": "kkk"
+    },
+    {
+      "host": "172.31.3.205",
+      "port": "31803",
+      "user": "aaa",
+      "password": "kkk"
+    }
+  ],
+  "rt": [
+    {
+      "host": "172.31.3.105",
+      "port": "31503",
+      "user": "aaa",
+      "password": "kkk"
+    },
+    {
+      "host": "172.31.3.205",
+      "port": "31503",
+      "user": "aaa",
+      "password": "kkk"
+    }
+  ],
+  "failover": {
+    "retry": "5",
+    "waitMs": "10000"
+  }
+}

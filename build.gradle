@@ -1,0 +1,28 @@
+plugins {
+    id 'com.github.johnrengelman.shadow' version '7.1.2'
+    id 'java'
+}
+group 'com.guardianquanta'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'com.gq.Main'
+    }
+}
+
+dependencies {
+    implementation fileTree(dir: 'lib', include: ['*.jar'])
+    implementation 'com.fasterxml.jackson.core:jackson-core:2.14.1'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.14.1'
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
+}
+
+test {
+    useJUnitPlatform()
+}
