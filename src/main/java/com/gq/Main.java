@@ -191,6 +191,7 @@ public class Main {
             SystemMessage msg = systemMessages.poll();
             if (msg != null) {
                 if (msg instanceof SystemMessage.Restart) {
+                    seq = 1;
                     ServerPair nextServer = servers.poll();
                     if (nextServer != null) {
                         System.out.println("Starting connection");
