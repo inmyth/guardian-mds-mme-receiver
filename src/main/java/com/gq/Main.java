@@ -9,12 +9,17 @@ import com.nasdaq.ouchitch.itch.impl.ItchMessageFactorySet;
 import com.nasdaq.ouchitch.utils.ClientException;
 import com.nasdaq.ouchitch.utils.ConnectContextImpl;
 import genium.trading.itch42.messages.Message;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerRecord;
 
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.Paths;
 import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
+import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
@@ -25,17 +30,20 @@ public class Main {
     private final Queue<ServerPair> servers = new LinkedBlockingQueue<>();
     private final Queue<SystemMessage> systemMessages = new LinkedBlockingQueue<>();
     private final ItchMessageFactorySet messageFactory = new ItchMessageFactorySet();
-
+    private final BlockingQueue<RawMessage> rawMessages = new LinkedBlockingQueue<>();
     private volatile ItchClient glimpseClient;
     private volatile Integer glimpseId;
-
-    private final SimpleDateFormat sdf = new SimpleDateFormat("yyyy MM dd HH:mm:ss");
-
+    private final KafkaProducer<String, byte[]> producer;
+    private final String kafkaTopic;
 
     public static void main(String[] args) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
         Config config = mapper.readValue(Paths.get("config/application.json").toFile(), Config.class);
-        Main main = new Main(config);
+        Properties kafkaProps = new Properties();
+        try (InputStream inputStream = new FileInputStream("config/kafka.properties")) {
+            kafkaProps.load(inputStream);
+        }
+        Main main = new Main(config, kafkaProps);
         main.start();
     }
 
@@ -46,14 +54,15 @@ public class Main {
                 .collect(Collectors.toCollection(LinkedBlockingQueue::new));
     }
 
-    public Main(Config config) {
+    public Main(Config config, Properties kafkaProps) {
         ServerPair main = new ServerPair(config.glimpse.get(0), config.rt.get(0));
         ServerPair backup = new ServerPair(config.glimpse.get(1), config.rt.get(1));
+        producer = new KafkaProducer<>(kafkaProps);
+        kafkaTopic = config.getKafkaTopic();
         int retry = config.failover.getRetry();
         servers.addAll(toQueue(main, retry));
         servers.addAll(toQueue(backup, retry));
     }
-
 
     private ConnectContextImpl createContext(Config.Server config, long seq) {
         ConnectContextImpl connectContext = new ConnectContextImpl();
@@ -71,9 +80,14 @@ public class Main {
             public void onDataReceived(Connection connection, ByteBuffer byteBuffer, long l) {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
                 Message parsed = messageFactory.parse(byteBuffer);
-                System.out.println("Itch "+ timestamp + "  type = " + parsed.getMsgType() +
-                        " " + parsed.getClass() +
-                        " seq=" + l);
+                if (parsed != null) {
+                     System.out.println("Itch "+ timestamp + "  type = " + parsed.getMsgType() +
+                             " " + parsed.getClass() +
+                             " seq=" + l);
+                    byte[] content = new byte[byteBuffer.remaining()];
+                    byteBuffer.get(content);
+                    rawMessages.add(new RawMessage(l, parsed.getMsgType(), content));
+                }
             }
 
             @Override
@@ -86,7 +100,6 @@ public class Main {
             public void onConnectionClosed(Connection connection) {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
                 System.out.println("Itch "+ timestamp + " connection closed");
-
             }
 
             @Override
@@ -126,19 +139,24 @@ public class Main {
                 seq = l;
                 Message parsed = messageFactory.parse(byteBuffer);
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-                System.out.println("Glimpse "+ timestamp + "  type = " + parsed.getMsgType() +
-                        " " + parsed.getClass() +
-                        " seq=" + l);
-                if (parsed.getMsgType() == 71) {
-                    systemMessages.add(new SystemMessage.LogoffGlimpse());
-                    ItchClient rtClient = createRtClient();
-                    try {
-                        System.out.println("Connecting to RT");
-                        rtContext.setSequenceNumber(seq);
-                        rtClient.connect(rtContext);
-                    } catch (ClientException e) {
-                        System.out.println(e);
-                        systemMessages.add(new SystemMessage.Restart());
+                if (parsed != null) {
+                     System.out.println("Glimpse "+ timestamp + "  type = " + parsed.getMsgType() +
+                             " " + parsed.getClass() +
+                             " seq=" + l);
+                    byte[] content = new byte[byteBuffer.remaining()];
+                    byteBuffer.get(content);
+                    rawMessages.add(new RawMessage(l, parsed.getMsgType(), content));
+                    if (parsed.getMsgType() == 71) {
+                        systemMessages.add(new SystemMessage.LogoffGlimpse());
+                        ItchClient rtClient = createRtClient();
+                        try {
+                            System.out.println("Connecting to RT");
+                            rtContext.setSequenceNumber(seq);
+                            rtClient.connect(rtContext);
+                        } catch (ClientException e) {
+                            e.printStackTrace();
+                            systemMessages.add(new SystemMessage.Restart());
+                        }
                     }
                 }
             }
@@ -185,8 +203,8 @@ public class Main {
         return itchClient;
     }
 
-    public void start(){
-        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+    public void start() {
+        ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
         executor.scheduleAtFixedRate(() -> {
             SystemMessage msg = systemMessages.poll();
             if (msg != null) {
@@ -209,6 +227,21 @@ public class Main {
                 }
             }
         }, 0, 1000, TimeUnit.MILLISECONDS);
+        executor.execute(() -> {
+            while (true) {
+                try {
+                    RawMessage rawMessage = rawMessages.take();
+                    producer.send(new ProducerRecord<>(kafkaTopic, Long.toString(rawMessage.sequenceNumber), rawMessage.content), (event, ex) -> {
+                        if (ex != null)
+                            ex.printStackTrace();
+                        else
+                            System.out.printf("Produced event to topic %s: key = %-10s value = %s%n", kafkaTopic, rawMessage.sequenceNumber, rawMessage.msgType);
+                    });
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+        });
         systemMessages.add(new SystemMessage.Restart());
     }
 
@@ -219,8 +252,8 @@ public class Main {
         try {
             this.glimpseId = glimpseClient.connect(glimpseCtx);
         } catch (ClientException e) {
-            System.out.println(e);
-           systemMessages.add(new SystemMessage.Restart());
+            e.printStackTrace();
+            systemMessages.add(new SystemMessage.Restart());
         }
     }
 
@@ -231,6 +264,18 @@ public class Main {
         public ServerPair(Config.Server glimpse, Config.Server rt) {
             this.glimpse = glimpse;
             this.rt = rt;
+        }
+    }
+
+    public static class RawMessage{
+        public byte[] content;
+        public long sequenceNumber;
+        public byte msgType;
+
+        public RawMessage(long sequenceNumber, byte msgType, byte[] content){
+            this.sequenceNumber = sequenceNumber;
+            this.msgType = msgType;
+            this.content = content;
         }
     }
 }
