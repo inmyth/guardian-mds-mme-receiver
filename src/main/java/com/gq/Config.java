@@ -6,11 +6,13 @@ public class Config {
     List<Server> glimpse;
     List<Server> rt;
     Failover failover;
+    String kafkaTopic;
 
-    public Config(List<Server> glimpse, List<Server> rt, Failover failover) {
+    public Config(List<Server> glimpse, List<Server> rt, Failover failover, String kafkaTopic) {
         this.glimpse = glimpse;
         this.rt = rt;
         this.failover = failover;
+        this.kafkaTopic = kafkaTopic;
     }
 
     public Config(){}
@@ -37,6 +39,14 @@ public class Config {
 
     public void setFailover(Failover failover) {
         this.failover = failover;
+    }
+
+    public String getKafkaTopic() {
+        return kafkaTopic;
+    }
+
+    public void setKafkaTopic(String kafkaTopic) {
+        this.kafkaTopic = kafkaTopic;
     }
 
     public static class Server {

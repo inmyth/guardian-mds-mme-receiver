@@ -30,5 +30,6 @@
   "failover": {
     "retry": "5",
     "waitMs": "10000"
-  }
+  },
+  "kafkaTopic": "receiver"
 }
