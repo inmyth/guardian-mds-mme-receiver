@@ -18,10 +18,10 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.Paths;
 import java.sql.Timestamp;
-import java.text.SimpleDateFormat;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.*;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -35,9 +35,11 @@ public class Main {
     private volatile Integer glimpseId;
     private final KafkaProducer<String, byte[]> producer;
     private final String kafkaTopic;
+    Logger logger = Logger.getLogger(Main.class.getName());
 
     public static void main(String[] args) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
+        System.setProperty("logback.configurationFile", "config/logback.xml");
         Config config = mapper.readValue(Paths.get("config/application.json").toFile(), Config.class);
         Properties kafkaProps = new Properties();
         try (InputStream inputStream = new FileInputStream("config/kafka.properties")) {
@@ -81,7 +83,7 @@ public class Main {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
                 Message parsed = messageFactory.parse(byteBuffer);
                 if (parsed != null) {
-                     System.out.println("Itch "+ timestamp + "  type = " + parsed.getMsgType() +
+                    logger.info("Itch "+ timestamp + "  type = " + parsed.getMsgType() +
                              " " + parsed.getClass() +
                              " seq=" + l);
                     byte[] content = new byte[byteBuffer.remaining()];
@@ -93,32 +95,32 @@ public class Main {
             @Override
             public void onConnectionEstablished(Connection connection) {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-                System.out.println("Itch "+ timestamp + " connection established");
+                logger.info("Itch "+ timestamp + " connection established");
             }
 
             @Override
             public void onConnectionClosed(Connection connection) {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-                System.out.println("Itch "+ timestamp + " connection closed");
+                logger.info("Itch "+ timestamp + " connection closed");
             }
 
             @Override
             public void onConnectionRejected(Connection connection, char c) {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-                System.out.println("Itch "+ timestamp + " connection rejected " + c);
+                logger.info("Itch "+ timestamp + " connection rejected " + c);
             }
 
             @Override
             public void onConnectionError(Connection connection, String s) {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-                System.out.println("Itch "+ timestamp + " connection error, " + s +" restarting");
-                systemMessages.add(new SystemMessage.Restart());
+                logger.info("Itch "+ timestamp + " connection error, " + s +" restarting");
+                systemMessages.add(new SystemMessage.RestartRt());
             }
 
             @Override
             public void onHeartbeat(Connection connection) {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-                System.out.println("Itch "+ timestamp + " connection heartbeat");
+                logger.info("Itch "+ timestamp + " connection heartbeat");
             }
         });
 
@@ -126,7 +128,7 @@ public class Main {
             @Override
             public void onMessage(Message message, long l) {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-                System.out.println("RT onMessage" + timestamp + " " + message.getMsgType());
+                logger.info("RT onMessage" + timestamp + " " + message.getMsgType());
             }
         });
         return itchClient;
@@ -140,7 +142,7 @@ public class Main {
                 Message parsed = messageFactory.parse(byteBuffer);
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
                 if (parsed != null) {
-                     System.out.println("Glimpse "+ timestamp + "  type = " + parsed.getMsgType() +
+                    logger.info("Glimpse "+ timestamp + "  type = " + parsed.getMsgType() +
                              " " + parsed.getClass() +
                              " seq=" + l);
                     byte[] content = new byte[byteBuffer.remaining()];
@@ -148,15 +150,7 @@ public class Main {
                     rawMessages.add(new RawMessage(l, parsed.getMsgType(), content));
                     if (parsed.getMsgType() == 71) {
                         systemMessages.add(new SystemMessage.LogoffGlimpse());
-                        ItchClient rtClient = createRtClient();
-                        try {
-                            System.out.println("Connecting to RT");
-                            rtContext.setSequenceNumber(seq);
-                            rtClient.connect(rtContext);
-                        } catch (ClientException e) {
-                            e.printStackTrace();
-                            systemMessages.add(new SystemMessage.Restart());
-                        }
+                        runRt(rtContext);
                     }
                 }
             }
@@ -164,41 +158,38 @@ public class Main {
             @Override
             public void onConnectionEstablished(Connection connection) {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-                System.out.println("Glimpse "+ timestamp + " connection established");
+                logger.info("Glimpse "+ timestamp + " connection established");
             }
 
             @Override
             public void onConnectionClosed(Connection connection) {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-                System.out.println("Glimpse "+ timestamp + " connection closed");
+                logger.info("Glimpse "+ timestamp + " connection closed");
             }
 
             @Override
             public void onConnectionRejected(Connection connection, char c) {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-                System.out.println("Glimpse "+ timestamp + " connection rejected " + c);
+                logger.info("Glimpse "+ timestamp + " connection rejected " + c);
             }
 
             @Override
             public void onConnectionError(Connection connection, String s) {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-                System.out.println("Glimpse "+ timestamp + " connection error " + s);
+                logger.info("Glimpse "+ timestamp + " connection error " + s);
                 systemMessages.add(new SystemMessage.Restart());
             }
 
             @Override
             public void onHeartbeat(Connection connection) {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-                System.out.println("Glimpse "+ timestamp + " connection heartbeat");
+                logger.info("Glimpse "+ timestamp + " connection heartbeat");
             }
         });
 
-        itchClient.registerMessageListener(new ItchMessageListener() {
-            @Override
-            public void onMessage(Message message, long l) {
-                Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-                System.out.println("Glimpse Message" + timestamp + " " + message.getMsgType());
-            }
+        itchClient.registerMessageListener((message, l) -> {
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            logger.info("Glimpse Message" + timestamp + " " + message.getMsgType());
         });
         return itchClient;
     }
@@ -207,15 +198,24 @@ public class Main {
         ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
         executor.scheduleAtFixedRate(() -> {
             SystemMessage msg = systemMessages.poll();
+
             if (msg != null) {
                 if (msg instanceof SystemMessage.Restart) {
-                    seq = 1;
                     ServerPair nextServer = servers.poll();
                     if (nextServer != null) {
-                        System.out.println("Starting connection");
+                        logger.info("Starting Glimpse connection");
                         run(nextServer);
                     } else {
                         System.exit(-20);
+                    }
+                } else if (msg instanceof SystemMessage.RestartRt) {
+                    ServerPair nextServer = servers.poll();
+                    if (nextServer != null) {
+                        logger.info("Starting RT connection");
+                        ConnectContextImpl rtCtx = createContext(nextServer.rt, seq);
+                        runRt(rtCtx);
+                    } else {
+                        System.exit(-30);
                     }
                 } else if (msg instanceof SystemMessage.LogoffGlimpse && glimpseClient != null && glimpseId != null) {
                     try {
@@ -254,6 +254,18 @@ public class Main {
         } catch (ClientException e) {
             e.printStackTrace();
             systemMessages.add(new SystemMessage.Restart());
+        }
+    }
+
+    private void runRt(ConnectContextImpl rtCtx) {
+        ItchClient rtClient = createRtClient();
+        try {
+            logger.info("Connecting to RT");
+            rtCtx.setSequenceNumber(seq);
+            rtClient.connect(rtCtx);
+        } catch (ClientException e) {
+            e.printStackTrace();
+            systemMessages.add(new SystemMessage.RestartRt());
         }
     }
 
