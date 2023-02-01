@@ -8,9 +8,11 @@ import com.nasdaq.ouchitch.itch.impl.ItchClient;
 import com.nasdaq.ouchitch.itch.impl.ItchMessageFactorySet;
 import com.nasdaq.ouchitch.utils.ClientException;
 import com.nasdaq.ouchitch.utils.ConnectContextImpl;
-import genium.trading.itch42.messages.Message;
+import genium.trading.itch42.messages.*;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -21,7 +23,6 @@ import java.sql.Timestamp;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.*;
-import java.util.logging.Logger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -35,11 +36,10 @@ public class Main {
     private volatile Integer glimpseId;
     private final KafkaProducer<String, byte[]> producer;
     private final String kafkaTopic;
-    Logger logger = Logger.getLogger(Main.class.getName());
+    private static final Logger logger = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
-        System.setProperty("logback.configurationFile", "config/logback.xml");
         Config config = mapper.readValue(Paths.get("config/application.json").toFile(), Config.class);
         Properties kafkaProps = new Properties();
         try (InputStream inputStream = new FileInputStream("config/kafka.properties")) {
@@ -57,6 +57,7 @@ public class Main {
     }
 
     public Main(Config config, Properties kafkaProps) {
+        logger.info("main");
         ServerPair main = new ServerPair(config.glimpse.get(0), config.rt.get(0));
         ServerPair backup = new ServerPair(config.glimpse.get(1), config.rt.get(1));
         producer = new KafkaProducer<>(kafkaProps);
@@ -83,9 +84,10 @@ public class Main {
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
                 Message parsed = messageFactory.parse(byteBuffer);
                 if (parsed != null) {
-                    logger.info("Itch "+ timestamp + "  type = " + parsed.getMsgType() +
-                             " " + parsed.getClass() +
-                             " seq=" + l);
+//                    logger.info("Itch "+ timestamp + "  type = " + parsed.getMsgType() +
+//                             " " + parsed.getClass() +
+//                             " seq=" + l);
+                    logMessage(parsed);
                     byte[] content = new byte[byteBuffer.remaining()];
                     byteBuffer.get(content);
                     rawMessages.add(new RawMessage(l, parsed.getMsgType(), content));
@@ -134,6 +136,125 @@ public class Main {
         return itchClient;
     }
 
+    private void logMessage(Message msg) {
+        if (msg instanceof OrderBookDirectoryMessageSetImpl) {
+            OrderBookDirectoryMessageSetImpl a = (OrderBookDirectoryMessageSetImpl) msg;
+             logger.info("OrderBookDirectoryMessageSetImpl symbol:{}, orderbookId:{}, longName:{}, financialProduct:{}, contractSize:{}," +
+                             " strikePrice:{}, corporateActionCode:{}, decimalsInPrice:{}, roundLotSize:{}, status:{}, exchangeCode:{}",
+                     new String(a.getSymbol()),
+                     a.getOrderBookId(),
+                     new String(a.getLongName()),
+                     new String(a.getFinancialProduct()),
+                     a.getContractSize(),
+                     a.getStrikePrice(),
+                     new String(a.getCorporateActionCode()),
+                     a.getDecimalsInPrice(),
+                     a.getRoundLotSize(),
+                     a.getStatus(),
+                     a.getExchangeCode());
+        } else if (msg instanceof ExchangeDirectoryMessage) {
+            ExchangeDirectoryMessage a = (ExchangeDirectoryMessage) msg;
+            logger.info("ExchangeDirectoryMessage exchangeCode:{}, exchangeName:{}",
+                    a.getExchangeCode(),
+                    new String(a.getExchangeName())
+                    );
+        } else if (msg instanceof MarketDirectoryMessageSet) {
+            MarketDirectoryMessageSet a = (MarketDirectoryMessageSet) msg;
+            logger.info("MarketDirectoryMessageSet marketCode:{}, marketName:{}, marketDesc:{}"
+                    , a.getMarketCode(), new String(a.getMarketName()), new String(a.getMarketDescription()));
+        } else if (msg instanceof CombinationOrderBookLegMessage) {
+            CombinationOrderBookLegMessage a = (CombinationOrderBookLegMessage) msg;
+            logger.info("CombinationOrderBookLegMessage oid:{}, legOid:{}, legRatio:{}, legSide:{} "
+                    , a.getOrderBookId(), a.getLegOrderBookId(), a.getLegRatio(), a.getLegSide());
+        } else if (msg instanceof TickSizeTableMessage) {
+            TickSizeTableMessage a = (TickSizeTableMessage) msg;
+            logger.info("TickSizeTableMessage oid:{}, priceTo:{}, priceFrom:{}", a.getOrderBookId(), a.getPriceTo(), a.getPriceFrom());
+        } else if (msg instanceof PriceLimitMessage) {
+            PriceLimitMessage a = (PriceLimitMessage) msg;
+            logger.info("PriceLimitMessage oid:{}, lowerLimit:{}, upperLimit:{}", a.getOrderBookId(), a.getLowerLimit(), a.getUpperLimit());
+        } else if (msg instanceof SystemEventMessage) {
+            SystemEventMessage a = (SystemEventMessage) msg;
+            logger.info("SystemEventMessage event:{}", a.getEvent());
+        } else if (msg instanceof OrderBookStateMessage) {
+            OrderBookStateMessage a = (OrderBookStateMessage) msg;
+            logger.info("OrderBookStateMessage oid:{}, stateName:{}", a.getOrderBookId(), new String(a.getStateName()));
+        } else if (msg instanceof  HaltInformationMessage) {
+            HaltInformationMessage a = (HaltInformationMessage) msg;
+            logger.info("HaltInformationMessage oid:{}, instrumentState:{}", a.getOrderBookId(), new String(a.getInstrumentState()));
+        } else if (msg instanceof MarketByPriceMessage) {
+            MarketByPriceMessage a = (MarketByPriceMessage) msg;
+            String items  = a.getItems().stream().map(p -> {
+                return "levelUpdateAction:" + p.getLevelUpdateAction() +
+                        ", side:" + p.getSide() +
+                        ", price:" + p.getPrice() +
+                        ", qty:" + p.getQuantity() +
+                        ", numberOfDeletes:" + p.getNumberOfDeletes();
+            }).collect(Collectors.joining("\n"));
+            logger.info("MarketByPriceMessage oid:{}, maxLevel:{}\n{}", a.getOrderBookId(), a.getMaximumLevel(), items);
+        } else if (msg instanceof EquilibriumPriceMessage) {
+            EquilibriumPriceMessage a = (EquilibriumPriceMessage) msg;
+            logger.info("EquilibriumPriceMessage oid:{}, price:{}, bestAskPrice:{}, askQty:{}, bestAskQty:{}, " +
+                            "bestBidPrice:{}, bidQty:{}, bestBidQty:{}", a.getOrderBookId(),
+                    a.getPrice(),a.getBestAskPrice(), a.getAskQuantity(), a.getBestAskQuantity(),
+                    a.getBestBidPrice(), a.getBidQuantity(), a.getBestBidQuantity()
+                    );
+        } else if (msg instanceof TradeTickerMessageSet) {
+            TradeTickerMessageSet a = (TradeTickerMessageSet) msg;
+            logger.info("TradeTickerMessageSet oid:{}, dealId:{}, dealSource:{}, price:{}, qty:{}, dealTime:{}, action:{}" +
+                            " aggressor:{}, tradeReportCode:{}",
+                    a.getOrderBookId(), a.getDealId(), a.getDealSource(), a.getPrice(), a.getQuantity(),
+                    a.getDealDateTime(), a.getAction(), a.getAggressor(), a.getTradeReportCode()
+                    );
+        } else if (msg instanceof TradeStatisticsMessage) {
+            TradeStatisticsMessage a = (TradeStatisticsMessage) msg;
+            logger.info("TradeStatisticsMessage oid:{}, openPrice:{}, highPrice:{}, lowPrice:{}, lastPrice:{}, lastAuctionPrice:{}, " +
+                            "lastQty:{}, turnOverQty:{}, reportedTurnOverQty:{}, turnOverValue:{}",
+                    a.getOrderBookId(), a.getOpenPrice(), a.getHighPrice(), a.getLowPrice(),
+                    a.getLastPrice(), a.getLastAuctionPrice(), a.getLastQuantity(), a.getTurnOverQuantity(), a.getReportedTurnOverQuantity(),
+                    a.getTurnOverValue()
+                    );
+        } else if (msg instanceof InavMessage) {
+            InavMessage a = (InavMessage) msg;
+            logger.info("InavMessage oid:{}, inav:{}, change:{}, percentageChange:{}, timestamp:{}",
+                    a.getOrderBookId(), a.getInav(), a.getChange(), a.getPercentageChange(), a.getTimestamp());
+        } else if (msg instanceof IndexPriceMessageSet) {
+            IndexPriceMessageSet a = (IndexPriceMessageSet) msg;
+            logger.info("IndexPriceMessageSet oid:{}, value:{}, highValue:{}, lowValue:{}, openValue:{}, " +
+                            "tradedVol:{}, tradedValue:{}, change:{}, changePercent:{}, previousClose:{}, close:{}, " +
+                            "ts:{}",
+                    a.getOrderBookId(), a.getValue(), a.getHighValue(), a.getLowValue(), a.getOpenValue(),
+                    a.getTradedVolume(), a.getTradedValue(), a.getChange(), a.getChangePercent(), a.getPreviousClose(),
+                    a.getClose(), a.getTimestamp()
+                    );
+        } else if (msg instanceof MarketStatisticsMessage) {
+            MarketStatisticsMessage a = (MarketStatisticsMessage) msg;
+            logger.info("MarketStatisticsMessage marketStatId:{}, currency:{}, marketStatTime:{}, " +
+                            "totalTrades:{}, totalQty:{}, totalValue:{}, upQty:{}, downQty:{}, noChangeQty:{}, " +
+                            "upShares:{}, downShares:{}, noChangeShares:{}",
+                    a.getMarketStatisticsId(), a.getCurrency(), a.getMarketStatisticsTime(),
+                    a.getTotalTrades(), a.getTotalQuantity(), a.getTotalValue(), a.getUpQuantity(), a.getDownQuantity(),
+                    a.getNoChangeQuantity(), a.getUpShares(), a.getDownShares(), a.getNoChangeShares()
+                    );
+        } else if (msg instanceof ReferencePriceMessage) {
+            ReferencePriceMessage a = (ReferencePriceMessage) msg;
+            logger.info("ReferencePriceMessage oid:{}, price:{}, priceType:{}, updatedTs:{}", a.getOrderBookId(), a.getPrice(), a.getPriceType(), a.getUpdatedTimestamp());
+        } else if (msg instanceof OpenInterestMessage){
+            OpenInterestMessage a = (OpenInterestMessage) msg;
+            logger.info("OpenInterestMessage oid:{}, openInterest:{}, ts:{}", a.getOrderBookId(), a.getOpenInterest(), a.getTimestamp());
+        } else if (msg instanceof MarketAnnouncementMessage) {
+            MarketAnnouncementMessage a = (MarketAnnouncementMessage) msg;
+            logger.info("MarketAnnouncementMessage oid:{}, header:{}", a.getOrderBookId(), new String(a.getHeader()));
+        } else if (msg instanceof GlimpseSnapshotMessage) {
+            GlimpseSnapshotMessage a = (GlimpseSnapshotMessage) msg;
+            logger.info("GlimpseSnapshotMessage itchMessageSeq: {}", new String(a.getItchSequenceNumber()));
+        }
+        else {
+             if (msg.getMsgType() != 84) {
+                logger.info("UNMATCHED_MESSAGE type:{}, class:{}", msg.getMsgType(), msg.getClass());
+            }
+        }
+    }
+
     private ItchClient createGlimpseClient(ConnectContextImpl rtContext) {
         ItchClient itchClient = new com.nasdaq.ouchitch.itch.impl.ItchClient(new ConnectionListener() {
             @Override
@@ -142,9 +263,10 @@ public class Main {
                 Message parsed = messageFactory.parse(byteBuffer);
                 Timestamp timestamp = new Timestamp(System.currentTimeMillis());
                 if (parsed != null) {
-                    logger.info("Glimpse "+ timestamp + "  type = " + parsed.getMsgType() +
-                             " " + parsed.getClass() +
-                             " seq=" + l);
+//                    logger.info("Glimpse "+ timestamp + "  type = " + parsed.getMsgType() +
+//                             " " + parsed.getClass() +
+//                             " seq=" + l);
+                    logMessage(parsed);
                     byte[] content = new byte[byteBuffer.remaining()];
                     byteBuffer.get(content);
                     rawMessages.add(new RawMessage(l, parsed.getMsgType(), content));
@@ -231,12 +353,12 @@ public class Main {
             while (true) {
                 try {
                     RawMessage rawMessage = rawMessages.take();
-                    producer.send(new ProducerRecord<>(kafkaTopic, Long.toString(rawMessage.sequenceNumber), rawMessage.content), (event, ex) -> {
-                        if (ex != null)
-                            ex.printStackTrace();
-                        else
-                            System.out.printf("Produced event to topic %s: key = %-10s value = %s%n", kafkaTopic, rawMessage.sequenceNumber, rawMessage.msgType);
-                    });
+//                    producer.send(new ProducerRecord<>(kafkaTopic, Long.toString(rawMessage.sequenceNumber), rawMessage.content), (event, ex) -> {
+//                        if (ex != null)
+//                            ex.printStackTrace();
+//                        else
+//                            System.out.printf("Produced event to topic %s: key = %-10s value = %s%n", kafkaTopic, rawMessage.sequenceNumber, rawMessage.msgType);
+//                    });
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
