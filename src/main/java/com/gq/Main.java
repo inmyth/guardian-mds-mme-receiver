@@ -124,12 +124,9 @@ public class Main {
             }
         });
 
-        itchClient.registerMessageListener(new ItchMessageListener() {
-            @Override
-            public void onMessage(Message message, long l) {
-                Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-                logger.info("RT onMessage" + timestamp + " " + message.getMsgType());
-            }
+        itchClient.registerMessageListener((message, l) -> {
+            Timestamp timestamp = new Timestamp(System.currentTimeMillis());
+            logger.info("RT onMessage" + timestamp + " " + message.getMsgType());
         });
         return itchClient;
     }
