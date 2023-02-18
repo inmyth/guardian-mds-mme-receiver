@@ -367,12 +367,12 @@ public class Main {
             while (true) {
                 try {
                     RawMessage rawMessage = rawMessages.take();
-//                    producer.send(new ProducerRecord<>(kafkaTopic, Long.toString(rawMessage.sequenceNumber), rawMessage.content), (event, ex) -> {
-//                        if (ex != null)
-//                            ex.printStackTrace();
-//                        else
-//                            System.out.printf("Produced event to topic %s: key = %-10s value = %s%n", kafkaTopic, rawMessage.sequenceNumber, rawMessage.msgType);
-//                    });
+                    producer.send(new ProducerRecord<>(kafkaTopic, Long.toString(rawMessage.sequenceNumber), rawMessage.content), (event, ex) -> {
+                        if (ex != null)
+                            ex.printStackTrace();
+                        else
+                            System.out.printf("Produced event to topic %s: key = %-10s value = %s%n", kafkaTopic, rawMessage.sequenceNumber, rawMessage.msgType);
+                    });
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
