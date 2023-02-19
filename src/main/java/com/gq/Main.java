@@ -27,7 +27,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class Main {
-    private volatile long seq = 1L;
+    private volatile long seq = 0L;
     private final Queue<ServerPair> servers = new LinkedBlockingQueue<>();
     private final Queue<SystemMessage> systemMessages = new LinkedBlockingQueue<>();
     private final ItchMessageFactorySet messageFactory = new ItchMessageFactorySet();
@@ -345,7 +345,7 @@ public class Main {
                     ServerPair nextServer = servers.poll();
                     if (nextServer != null) {
                         logger.info("Starting RT connection");
-                        ConnectContextImpl rtCtx = createContext(nextServer.rt, seq);
+                        ConnectContextImpl rtCtx = createContext(nextServer.rt, seq + 1);
                         runRt(rtCtx);
                     } else {
                         System.exit(-30);
@@ -379,8 +379,8 @@ public class Main {
     }
 
     private void run(ServerPair server) {
-        ConnectContextImpl glimpseCtx = createContext(server.glimpse, seq);
-        ConnectContextImpl rtCtx = createContext(server.rt, seq);
+        ConnectContextImpl glimpseCtx = createContext(server.glimpse, seq + 1);
+        ConnectContextImpl rtCtx = createContext(server.rt, -100); // seq is not needed here
         glimpseClient =  createGlimpseClient(rtCtx);
         try {
             this.glimpseId = glimpseClient.connect(glimpseCtx);
@@ -394,7 +394,7 @@ public class Main {
         ItchClient rtClient = createRtClient();
         try {
             logger.info("Connecting to RT");
-            rtCtx.setSequenceNumber(seq);
+            rtCtx.setSequenceNumber(seq + 1);
             rtClient.connect(rtCtx);
         } catch (ClientException e) {
             e.printStackTrace();
