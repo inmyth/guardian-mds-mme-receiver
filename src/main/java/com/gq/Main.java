@@ -132,18 +132,101 @@ public class Main {
         });
         return itchClient;
     }
-
+/*
+    protected final byte[] symbol = new byte[32];
+    protected final byte[] longName = new byte[32];
+    protected final byte[] isin = new byte[12];
+    protected final byte[] financialProduct = new byte[3];
+    protected final byte[] tradingCurrency = new byte[3];
+    protected short decimalsInPrice;
+    protected short decimalsInNominalValue;
+    protected int roundLotSize;
+    protected long nominalValue;
+    protected byte numberOfLegs;
+    protected final byte[] underlyingName = new byte[6];
+    protected int underlying;
+    protected int underlyingOrderBookId;
+    protected int strikePrice;
+    protected int expirationDate;
+    protected short decimalsInStrikePrice;
+    protected byte optionType;
+    protected byte exchangeCode;
+    protected byte marketCode;
+    protected long priceQuotationFactor;
+    protected final byte[] corporateActionCode = new byte[32];
+    protected final byte[] notificationSign = new byte[32];
+    protected final byte[] otherSign = new byte[32];
+    protected byte allowNvdr;
+    protected byte allowShortSell;
+    protected byte allowShortSellOnNvdr;
+    protected byte allowTtf;
+    protected long parValue;
+    protected int firstTradingDate;
+    protected int firstTradingTime;
+    protected int lastTradingDate;
+    protected int lastTradingTime;
+    protected final byte[] marketSegment = new byte[4];
+    protected byte physicalDelivery;
+    protected int contractSize;
+    protected final byte[] sectorCode = new byte[4];
+    protected final byte[] originatesFrom = new byte[32];
+    protected byte status;
+    protected short modifier;
+    protected int notationDate;
+    protected short decimalsInContractSizePQF;
+ */
     private void logMessage(Message msg, Long seq) {
         if (msg instanceof OrderBookDirectoryMessageSetImpl) {
             OrderBookDirectoryMessageSetImpl a = (OrderBookDirectoryMessageSetImpl) msg;
-             logger.info("{} OrderBookDirectoryMessageSetImpl symbol:{}, orderbookId:{}, longName:{}, financialProduct:{}, contractSize:{}," +
+             logger.info("{} OrderBookDirectoryMessageSetImpl symbol:{}, orderbookId:{}, longName:{}, isin:{}, financialProduct:{}, " +
+                             "tradingCurrency:{}, decimalsInPrice:{}, decimalsInNominalValue:{}, roundLotSize:{}, " +
+                             "nominalValue:{}, numberOfLegs:{}, underlyingName:{}, underlying:{}, underlyingOrderBookId:{}," +
+                             "expirationDate:{}, decimalsInStrikePrice:{}, optionType:{}, exchangeCode:{}, marketCode:{}," +
+                             "priceQuotationFactor:{}, notificationSign:{}, otherSign:{}, allowNvdr:{}, allowShortSell:{}," +
+                             "allowShortSellOnNvdr:{}, allowTtf:{}, parValue:{}, firstTradingDate:{}, firstTradingTime:{}" +
+                             "lastTradingDate:{}, lastTradingTime:{}, marketSegment:{}, physicalDelivery:{}" +
+                             " contractSize:{}, sectorCode:{}, originatesFrom:{}, modifier:{}, notationDate:{}, decimalsInContractSizePQF:{}" +
                              " strikePrice:{}, corporateActionCode:{}, decimalsInPrice:{}, roundLotSize:{}, status:{}, exchangeCode:{}",
                      seq,
                      new String(a.getSymbol()),
                      a.getOrderBookId(),
                      new String(a.getLongName()),
+                     new String(a.getIsin()),
                      new String(a.getFinancialProduct()),
+                     new String(a.getTradingCurrency()),
+                     a.getDecimalsInPrice(),
+                     a.getDecimalsInNominalValue(),
+                     a.getRoundLotSize(),
+                     a.getNominalValue(),
+                     a.getNumberOfLegs(),
+                     new String(a.getUnderlyingName()),
+                     a.getUnderlying(),
+                     a.getUnderlyingOrderBookId(),
+                     a.getExpirationDate(),
+                     a.getDecimalsInStrikePrice(),
+                     a.getOptionType(),
+                     a.getExchangeCode(),
+                     a.getMarketCode(),
+                     a.getPriceQuotationFactor(),
+                     new String(a.getNotificationSign()),
+                     new String(a.getOtherSign()),
+                     a.getAllowNvdr(),
+                     a.getAllowShortSell(),
+                     a.getAllowShortSellOnNvdr(),
+                     a.getAllowTtf(),
+                     a.getParValue(),
+                     a.getFirstTradingDate(),
+                     a.getFirstTradingTime(),
+                     a.getLastTradingDate(),
+                     a.getLastTradingTime(),
+                     new String(a.getMarketSegment()),
+                     a.getPhysicalDelivery(),
                      a.getContractSize(),
+                     new String(a.getSectorCode()),
+                     new String(a.getOriginatesFrom()),
+                     a.getModifier(),
+                     a.getNotationDate(),
+                     a.getDecimalsInContractSizePQF(),
                      a.getStrikePrice(),
                      new String(a.getCorporateActionCode()),
                      a.getDecimalsInPrice(),
