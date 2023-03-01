@@ -3,7 +3,6 @@ package com.gq;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nasdaq.mme.common.soup.Connection;
 import com.nasdaq.mme.common.soup.ConnectionListener;
-import com.nasdaq.ouchitch.api.ItchMessageListener;
 import com.nasdaq.ouchitch.itch.impl.ItchClient;
 import com.nasdaq.ouchitch.itch.impl.ItchMessageFactorySet;
 import com.nasdaq.ouchitch.utils.ClientException;
@@ -35,7 +34,8 @@ public class Main {
     private volatile ItchClient glimpseClient;
     private volatile Integer glimpseId;
     private final KafkaProducer<String, byte[]> producer;
-    private final String kafkaTopic;
+    private final String redisTopic;
+    private final String mysqlTopic;
     private static final Logger logger = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) throws IOException {
@@ -61,7 +61,8 @@ public class Main {
         ServerPair main = new ServerPair(config.glimpse.get(0), config.rt.get(0));
         ServerPair backup = new ServerPair(config.glimpse.get(1), config.rt.get(1));
         producer = new KafkaProducer<>(kafkaProps);
-        kafkaTopic = config.getKafkaTopic();
+        redisTopic = config.getRedisTopic();
+        mysqlTopic = config.getMysqlTopic();
         int retry = config.failover.getRetry();
         servers.addAll(toQueue(main, retry));
         servers.addAll(toQueue(backup, retry));
@@ -447,11 +448,17 @@ public class Main {
             while (true) {
                 try {
                     RawMessage rawMessage = rawMessages.take();
-                    producer.send(new ProducerRecord<>(kafkaTopic, Long.toString(rawMessage.sequenceNumber), rawMessage.content), (event, ex) -> {
+                    producer.send(new ProducerRecord<>(redisTopic, Long.toString(rawMessage.sequenceNumber), rawMessage.content), (event, ex) -> {
                         if (ex != null)
                             ex.printStackTrace();
                         else
-                            System.out.printf("Produced event to topic %s: key = %-10s value = %s%n", kafkaTopic, rawMessage.sequenceNumber, rawMessage.msgType);
+                            System.out.printf("Produced event to topic %s: key = %-10s value = %s%n", redisTopic, rawMessage.sequenceNumber, rawMessage.msgType);
+                    });
+                    producer.send(new ProducerRecord<>(mysqlTopic, Long.toString(rawMessage.sequenceNumber), rawMessage.content), (event, ex) -> {
+                        if (ex != null)
+                            ex.printStackTrace();
+                        else
+                            System.out.printf("Produced event to topic %s: key = %-10s value = %s%n", mysqlTopic, rawMessage.sequenceNumber, rawMessage.msgType);
                     });
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);

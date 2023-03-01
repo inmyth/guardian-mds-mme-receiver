@@ -6,13 +6,32 @@ public class Config {
     List<Server> glimpse;
     List<Server> rt;
     Failover failover;
-    String kafkaTopic;
 
-    public Config(List<Server> glimpse, List<Server> rt, Failover failover, String kafkaTopic) {
+    public String getRedisTopic() {
+        return redisTopic;
+    }
+
+    public void setRedisTopic(String redisTopic) {
+        this.redisTopic = redisTopic;
+    }
+
+    public String getMysqlTopic() {
+        return mysqlTopic;
+    }
+
+    public void setMysqlTopic(String mysqlTopic) {
+        this.mysqlTopic = mysqlTopic;
+    }
+
+    String redisTopic;
+    String mysqlTopic;
+
+    public Config(List<Server> glimpse, List<Server> rt, Failover failover, String redisTopic, String mysqlTopic) {
         this.glimpse = glimpse;
         this.rt = rt;
         this.failover = failover;
-        this.kafkaTopic = kafkaTopic;
+        this.redisTopic = redisTopic;
+        this.mysqlTopic = mysqlTopic;
     }
 
     public Config(){}
@@ -41,13 +60,7 @@ public class Config {
         this.failover = failover;
     }
 
-    public String getKafkaTopic() {
-        return kafkaTopic;
-    }
 
-    public void setKafkaTopic(String kafkaTopic) {
-        this.kafkaTopic = kafkaTopic;
-    }
 
     public static class Server {
         private String host;
