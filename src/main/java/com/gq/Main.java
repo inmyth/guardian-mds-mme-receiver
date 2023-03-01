@@ -133,49 +133,7 @@ public class Main {
         });
         return itchClient;
     }
-/*
-    protected final byte[] symbol = new byte[32];
-    protected final byte[] longName = new byte[32];
-    protected final byte[] isin = new byte[12];
-    protected final byte[] financialProduct = new byte[3];
-    protected final byte[] tradingCurrency = new byte[3];
-    protected short decimalsInPrice;
-    protected short decimalsInNominalValue;
-    protected int roundLotSize;
-    protected long nominalValue;
-    protected byte numberOfLegs;
-    protected final byte[] underlyingName = new byte[6];
-    protected int underlying;
-    protected int underlyingOrderBookId;
-    protected int strikePrice;
-    protected int expirationDate;
-    protected short decimalsInStrikePrice;
-    protected byte optionType;
-    protected byte exchangeCode;
-    protected byte marketCode;
-    protected long priceQuotationFactor;
-    protected final byte[] corporateActionCode = new byte[32];
-    protected final byte[] notificationSign = new byte[32];
-    protected final byte[] otherSign = new byte[32];
-    protected byte allowNvdr;
-    protected byte allowShortSell;
-    protected byte allowShortSellOnNvdr;
-    protected byte allowTtf;
-    protected long parValue;
-    protected int firstTradingDate;
-    protected int firstTradingTime;
-    protected int lastTradingDate;
-    protected int lastTradingTime;
-    protected final byte[] marketSegment = new byte[4];
-    protected byte physicalDelivery;
-    protected int contractSize;
-    protected final byte[] sectorCode = new byte[4];
-    protected final byte[] originatesFrom = new byte[32];
-    protected byte status;
-    protected short modifier;
-    protected int notationDate;
-    protected short decimalsInContractSizePQF;
- */
+
     private void logMessage(Message msg, Long seq) {
         if (msg instanceof OrderBookDirectoryMessageSetImpl) {
             OrderBookDirectoryMessageSetImpl a = (OrderBookDirectoryMessageSetImpl) msg;
