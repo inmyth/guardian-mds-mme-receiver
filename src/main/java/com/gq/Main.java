@@ -82,12 +82,8 @@ public class Main {
         ItchClient itchClient = new ItchClient(new ConnectionListener() {
             @Override
             public void onDataReceived(Connection connection, ByteBuffer byteBuffer, long l) {
-                Timestamp timestamp = new Timestamp(System.currentTimeMillis());
                 Message parsed = messageFactory.parse(byteBuffer);
                 if (parsed != null) {
-//                    logger.info("Itch "+ timestamp + "  type = " + parsed.getMsgType() +
-//                             " " + parsed.getClass() +
-//                             " seq=" + l);
                     logMessage(parsed, l);
                     byte[] content = new byte[byteBuffer.remaining()];
                     byteBuffer.get(content);
@@ -164,22 +160,22 @@ public class Main {
                      a.getExpirationDate(),
                      a.getDecimalsInStrikePrice(),
                      a.getOptionType(),
-                     a.getExchangeCode(),
+                     (char)(a.getExchangeCode()),
                      a.getMarketCode(),
                      a.getPriceQuotationFactor(),
                      new String(a.getNotificationSign()),
                      new String(a.getOtherSign()),
-                     a.getAllowNvdr(),
-                     a.getAllowShortSell(),
-                     a.getAllowShortSellOnNvdr(),
-                     a.getAllowTtf(),
+                     (char)(a.getAllowNvdr() & 0xFF),
+                     (char)(a.getAllowShortSell() & 0xFF),
+                     (char)(a.getAllowShortSellOnNvdr() & 0xFF),
+                     (char)(a.getAllowTtf() & 0xFF),
                      a.getParValue(),
                      a.getFirstTradingDate(),
                      a.getFirstTradingTime(),
                      a.getLastTradingDate(),
                      a.getLastTradingTime(),
                      new String(a.getMarketSegment()),
-                     a.getPhysicalDelivery(),
+                     (char)(a.getPhysicalDelivery() & 0xFF),
                      a.getContractSize(),
                      new String(a.getSectorCode()),
                      new String(a.getOriginatesFrom()),
@@ -190,8 +186,8 @@ public class Main {
                      new String(a.getCorporateActionCode()),
                      a.getDecimalsInPrice(),
                      a.getRoundLotSize(),
-                     a.getStatus(),
-                     a.getExchangeCode());
+                     (char)(a.getStatus() & 0xFF),
+                     (char)(a.getExchangeCode() & 0xFF));
         } else if (msg instanceof ExchangeDirectoryMessage) {
             ExchangeDirectoryMessage a = (ExchangeDirectoryMessage) msg;
             logger.info("{} ExchangeDirectoryMessage exchangeCode:{}, exchangeName:{}",
@@ -206,7 +202,7 @@ public class Main {
         } else if (msg instanceof CombinationOrderBookLegMessage) {
             CombinationOrderBookLegMessage a = (CombinationOrderBookLegMessage) msg;
             logger.info("{} CombinationOrderBookLegMessage oid:{}, legOid:{}, legRatio:{}, legSide:{} "
-                    ,seq, a.getOrderBookId(), a.getLegOrderBookId(), a.getLegRatio(), a.getLegSide());
+                    ,seq, a.getOrderBookId(), a.getLegOrderBookId(), a.getLegRatio(), (char)(a.getLegSide() & 0xFF));
         } else if (msg instanceof TickSizeTableMessage) {
             TickSizeTableMessage a = (TickSizeTableMessage) msg;
             logger.info("{} TickSizeTableMessage oid:{}, priceTo:{}, priceFrom:{}", seq, a.getOrderBookId(), a.getPriceTo(), a.getPriceFrom());
@@ -224,13 +220,12 @@ public class Main {
             logger.info("{} HaltInformationMessage oid:{}, instrumentState:{}", seq, a.getOrderBookId(), new String(a.getInstrumentState()));
         } else if (msg instanceof MarketByPriceMessage) {
             MarketByPriceMessage a = (MarketByPriceMessage) msg;
-            String items  = a.getItems().stream().map(p -> {
-                return "levelUpdateAction:" + p.getLevelUpdateAction() +
-                        ", side:" + p.getSide() +
+            String items  = a.getItems().stream().map(p -> "levelUpdateAction:" + (char) (p.getLevelUpdateAction() & 0xFF) +
+                        ", level:" + p.getLevel() +
+                        ", side:" + (char) (p.getSide() & 0xFF) +
                         ", price:" + p.getPrice() +
                         ", qty:" + p.getQuantity() +
-                        ", numberOfDeletes:" + p.getNumberOfDeletes();
-            }).collect(Collectors.joining("\n"));
+                        ", numberOfDeletes:" + p.getNumberOfDeletes()).collect(Collectors.joining("\n"));
             logger.info("{} MarketByPriceMessage oid:{}, maxLevel:{}\n{}", seq, a.getOrderBookId(), a.getMaximumLevel(), items);
         } else if (msg instanceof EquilibriumPriceMessage) {
             EquilibriumPriceMessage a = (EquilibriumPriceMessage) msg;
@@ -243,8 +238,8 @@ public class Main {
             TradeTickerMessageSet a = (TradeTickerMessageSet) msg;
             logger.info("{} TradeTickerMessageSet oid:{}, dealId:{}, dealSource:{}, price:{}, qty:{}, dealTime:{}, action:{}" +
                             " aggressor:{}, tradeReportCode:{}",
-                    seq, a.getOrderBookId(), a.getDealId(), a.getDealSource(), a.getPrice(), a.getQuantity(),
-                    a.getDealDateTime(), a.getAction(), a.getAggressor(), a.getTradeReportCode()
+                    seq, a.getOrderBookId(), a.getDealId(), (char) (a.getDealSource() & 0xFF), a.getPrice(), a.getQuantity(),
+                    a.getDealDateTime(), (char) (a.getAction() & 0xFF), (char) (a.getAggressor() & 0xFF), a.getTradeReportCode()
                     );
         } else if (msg instanceof TradeStatisticsMessage) {
             TradeStatisticsMessage a = (TradeStatisticsMessage) msg;
@@ -281,14 +276,14 @@ public class Main {
             logger.info("{} MarketStatisticsMessage marketStatId:{}, currency:{}, marketStatTime:{}, " +
                             "totalTrades:{}, totalQty:{}, totalValue:{}, upQty:{}, downQty:{}, noChangeQty:{}, " +
                             "upShares:{}, downShares:{}, noChangeShares:{}",
-                    seq, new String(a.getMarketStatisticsId()), a.getCurrency(), a.getMarketStatisticsTime(),
+                    seq, new String(a.getMarketStatisticsId()), new String(a.getCurrency()), a.getMarketStatisticsTime(),
                     a.getTotalTrades(), a.getTotalQuantity(), a.getTotalValue(), a.getUpQuantity(), a.getDownQuantity(),
                     a.getNoChangeQuantity(), a.getUpShares(), a.getDownShares(), a.getNoChangeShares()
                     );
         } else if (msg instanceof ReferencePriceMessage) {
             ReferencePriceMessage a = (ReferencePriceMessage) msg;
             logger.info("{} ReferencePriceMessage oid:{}, price:{}, priceType:{}, updatedTs:{}",
-                    seq, a.getOrderBookId(), a.getPrice(), a.getPriceType(), a.getUpdatedTimestamp());
+                    seq, a.getOrderBookId(), a.getPrice(), (char)(a.getPriceType() & 0xFF), a.getUpdatedTimestamp());
         } else if (msg instanceof OpenInterestMessage){
             OpenInterestMessage a = (OpenInterestMessage) msg;
             logger.info("{} OpenInterestMessage oid:{}, openInterest:{}, ts:{}",
@@ -303,7 +298,7 @@ public class Main {
         }
         else {
              if (msg.getMsgType() != 84) {
-                logger.info("{} UNMATCHED_MESSAGE type:{}, class:{}", seq, msg.getMsgType(), msg.getClass());
+                logger.info("{} UNMATCHED_MESSAGE type:{}, class:{}", seq, (char) (msg.getMsgType() & 0xFF), msg.getClass());
             }
         }
     }
@@ -314,11 +309,7 @@ public class Main {
             public void onDataReceived(Connection connection, ByteBuffer byteBuffer, long l) {
                 seq = l;
                 Message parsed = messageFactory.parse(byteBuffer);
-                Timestamp timestamp = new Timestamp(System.currentTimeMillis());
                 if (parsed != null) {
-//                    logger.info("Glimpse "+ timestamp + "  type = " + parsed.getMsgType() +
-//                             " " + parsed.getClass() +
-//                             " seq=" + l);
                     logMessage(parsed, l);
                     byte[] content = new byte[byteBuffer.remaining()];
                     byteBuffer.get(content);
