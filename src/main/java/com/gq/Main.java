@@ -19,6 +19,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.Paths;
 import java.sql.Timestamp;
+import java.util.List;
 import java.util.Properties;
 import java.util.Queue;
 import java.util.concurrent.*;
@@ -34,8 +35,7 @@ public class Main {
     private volatile ItchClient glimpseClient;
     private volatile Integer glimpseId;
     private final KafkaProducer<String, byte[]> producer;
-    private final String redisTopic;
-    private final String mysqlTopic;
+    private final List<String> topics;
     private static final Logger logger = LoggerFactory.getLogger(Main.class);
 
     public static void main(String[] args) throws IOException {
@@ -61,8 +61,7 @@ public class Main {
         ServerPair main = new ServerPair(config.glimpse.get(0), config.rt.get(0));
         ServerPair backup = new ServerPair(config.glimpse.get(1), config.rt.get(1));
         producer = new KafkaProducer<>(kafkaProps);
-        redisTopic = config.getRedisTopic();
-        mysqlTopic = config.getMysqlTopic();
+        topics = config.topics;
         int retry = config.failover.getRetry();
         servers.addAll(toQueue(main, retry));
         servers.addAll(toQueue(backup, retry));
@@ -399,18 +398,14 @@ public class Main {
             while (true) {
                 try {
                     RawMessage rawMessage = rawMessages.take();
-                    producer.send(new ProducerRecord<>(redisTopic, Long.toString(rawMessage.sequenceNumber), rawMessage.content), (event, ex) -> {
-                        if (ex != null)
-                            ex.printStackTrace();
-                        else
-                            System.out.printf("Produced event to topic %s: key = %-10s value = %s%n", redisTopic, rawMessage.sequenceNumber, rawMessage.msgType);
-                    });
-                    producer.send(new ProducerRecord<>(mysqlTopic, Long.toString(rawMessage.sequenceNumber), rawMessage.content), (event, ex) -> {
-                        if (ex != null)
-                            ex.printStackTrace();
-                        else
-                            System.out.printf("Produced event to topic %s: key = %-10s value = %s%n", mysqlTopic, rawMessage.sequenceNumber, rawMessage.msgType);
-                    });
+                    for (String t: topics) {
+                        producer.send(new ProducerRecord<>(t, Long.toString(rawMessage.sequenceNumber), rawMessage.content), (event, ex) -> {
+                            if (ex != null)
+                                ex.printStackTrace();
+                            else
+                                System.out.printf("Produced event to topic %s: key = %-10s value = %s%n", t, rawMessage.sequenceNumber, rawMessage.msgType);
+                        });
+                    }
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }

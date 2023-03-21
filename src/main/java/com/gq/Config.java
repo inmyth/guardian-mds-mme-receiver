@@ -6,32 +6,21 @@ public class Config {
     List<Server> glimpse;
     List<Server> rt;
     Failover failover;
+    List<String> topics;
 
-    public String getRedisTopic() {
-        return redisTopic;
-    }
-
-    public void setRedisTopic(String redisTopic) {
-        this.redisTopic = redisTopic;
-    }
-
-    public String getMysqlTopic() {
-        return mysqlTopic;
-    }
-
-    public void setMysqlTopic(String mysqlTopic) {
-        this.mysqlTopic = mysqlTopic;
-    }
-
-    String redisTopic;
-    String mysqlTopic;
-
-    public Config(List<Server> glimpse, List<Server> rt, Failover failover, String redisTopic, String mysqlTopic) {
+    public Config(List<Server> glimpse, List<Server> rt, Failover failover, List<String> topics) {
         this.glimpse = glimpse;
         this.rt = rt;
         this.failover = failover;
-        this.redisTopic = redisTopic;
-        this.mysqlTopic = mysqlTopic;
+        this.topics = topics;
+    }
+
+    public List<String> getTopics() {
+        return topics;
+    }
+
+    public void setTopics(List<String> topics) {
+        this.topics = topics;
     }
 
     public Config(){}
@@ -59,8 +48,6 @@ public class Config {
     public void setFailover(Failover failover) {
         this.failover = failover;
     }
-
-
 
     public static class Server {
         private String host;

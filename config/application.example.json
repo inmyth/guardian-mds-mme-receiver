@@ -31,6 +31,8 @@
     "retry": "5",
     "waitMs": "10000"
   },
-  "redisTopic": "set-redis",
-  "mysqlTopic": "set-mysql"
+  "topics": [
+    "set-redis",
+    "set-mysql"
+  ]
 }
