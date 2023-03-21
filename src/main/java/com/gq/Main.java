@@ -315,6 +315,8 @@ public class Main {
                     byteBuffer.get(content);
                     rawMessages.add(new RawMessage(l, parsed.getMsgType(), content));
                     if (parsed.getMsgType() == 71) {
+                        GlimpseSnapshotMessage m = (GlimpseSnapshotMessage) parsed;
+                        seq = Long.parseLong(new String(m.getItchSequenceNumber()));
                         systemMessages.add(new SystemMessage.LogoffGlimpse());
                         runRt(rtContext);
                     }
@@ -433,7 +435,7 @@ public class Main {
         ItchClient rtClient = createRtClient();
         try {
             logger.info("Connecting to RT");
-            rtCtx.setSequenceNumber(seq + 1);
+            rtCtx.setSequenceNumber(seq);
             rtClient.connect(rtCtx);
         } catch (ClientException e) {
             e.printStackTrace();
