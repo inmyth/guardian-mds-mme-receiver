@@ -34,5 +34,6 @@
   "topics": [
     "set-redis",
     "set-mysql"
-  ]
+  ],
+  "alertTopic": "alert"
 }

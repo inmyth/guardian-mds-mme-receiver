@@ -17,8 +17,10 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.sql.Timestamp;
+import java.util.Date;
 import java.util.List;
 import java.util.Properties;
 import java.util.Queue;
@@ -36,9 +38,10 @@ public class Main {
     private volatile Integer glimpseId;
     private final KafkaProducer<String, byte[]> producer;
     private final List<String> topics;
+    private final String alertTopic;
     private static final Logger logger = LoggerFactory.getLogger(Main.class);
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
         Config config = mapper.readValue(Paths.get("config/application.json").toFile(), Config.class);
         Properties kafkaProps = new Properties();
@@ -46,7 +49,13 @@ public class Main {
             kafkaProps.load(inputStream);
         }
         Main main = new Main(config, kafkaProps);
-        main.start();
+        try {
+            main.start();
+        } catch (Exception e) {
+            System.out.println("Main.main() try-catch activated, shutting down");
+            System.exit(1);
+            throw e;
+        }
     }
 
     private LinkedBlockingQueue<ServerPair> toQueue(ServerPair sp, int retry) {
@@ -62,6 +71,7 @@ public class Main {
         ServerPair backup = new ServerPair(config.glimpse.get(1), config.rt.get(1));
         producer = new KafkaProducer<>(kafkaProps);
         topics = config.topics;
+        alertTopic = config.alertTopic;
         int retry = config.failover.getRetry();
         servers.addAll(toQueue(main, retry));
         servers.addAll(toQueue(backup, retry));
@@ -361,38 +371,46 @@ public class Main {
         return itchClient;
     }
 
-    public void start() {
+    public void start() throws Exception {
         ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
-        executor.scheduleAtFixedRate(() -> {
-            SystemMessage msg = systemMessages.poll();
 
-            if (msg != null) {
-                if (msg instanceof SystemMessage.Restart) {
-                    ServerPair nextServer = servers.poll();
-                    if (nextServer != null) {
-                        logger.info("Starting Glimpse connection");
-                        run(nextServer);
-                    } else {
-                        System.exit(-20);
+        ScheduledFuture<?> scheduledFuture = executor.scheduleAtFixedRate(() -> {
+                SystemMessage msg = systemMessages.poll();
+                if (msg != null) {
+                    if (msg instanceof SystemMessage.Restart) {
+                        ServerPair nextServer = servers.poll();
+                        if (nextServer != null) {
+                            logger.info("Starting Glimpse connection");
+                            producer.send(new ProducerRecord<>(alertTopic, Long.toString(System.currentTimeMillis()),
+                                ("Starting Receiver from Glimpse at " + new Date()).getBytes(StandardCharsets.UTF_8)),
+                                (event, ex) -> {
+                                    if (ex != null) {
+                                        logger.error("Cannot send to alert: " + ex.getMessage());
+                                        throw new RuntimeException(ex.getMessage());
+                                    }
+                                });
+                            run(nextServer);
+                        } else {
+                            throw new RuntimeException("Restart cannot find Glimpse server from config");
+                        }
+                    } else if (msg instanceof SystemMessage.RestartRt) {
+                        ServerPair nextServer = servers.poll();
+                        if (nextServer != null) {
+                            logger.info("Starting RT connection");
+                            ConnectContextImpl rtCtx = createContext(nextServer.rt, seq + 1);
+                            runRt(rtCtx);
+                        } else {
+                            throw new RuntimeException("RestartRT cannot find RT server from config");
+                        }
+                    } else if (msg instanceof SystemMessage.LogoffGlimpse && glimpseClient != null && glimpseId != null) {
+                        try {
+                            glimpseClient.logout(glimpseId);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                        glimpseClient.close();
                     }
-                } else if (msg instanceof SystemMessage.RestartRt) {
-                    ServerPair nextServer = servers.poll();
-                    if (nextServer != null) {
-                        logger.info("Starting RT connection");
-                        ConnectContextImpl rtCtx = createContext(nextServer.rt, seq + 1);
-                        runRt(rtCtx);
-                    } else {
-                        System.exit(-30);
-                    }
-                } else if (msg instanceof SystemMessage.LogoffGlimpse && glimpseClient != null && glimpseId != null) {
-                    try {
-                        glimpseClient.logout(glimpseId);
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                    glimpseClient.close();
                 }
-            }
         }, 0, 1000, TimeUnit.MILLISECONDS);
         executor.execute(() -> {
             while (true) {
@@ -400,8 +418,10 @@ public class Main {
                     RawMessage rawMessage = rawMessages.take();
                     for (String t: topics) {
                         producer.send(new ProducerRecord<>(t, Long.toString(rawMessage.sequenceNumber), rawMessage.content), (event, ex) -> {
-                            if (ex != null)
-                                ex.printStackTrace();
+                            if (ex != null) {
+                                logger.error(ex.getMessage());
+                                throw new RuntimeException(ex.getMessage());
+                            }
                             else
                                 System.out.printf("Produced event to topic %s: key = %-10s value = %s%n", t, rawMessage.sequenceNumber, rawMessage.msgType);
                         });
@@ -412,6 +432,21 @@ public class Main {
             }
         });
         systemMessages.add(new SystemMessage.Restart());
+        try {
+            scheduledFuture.get();
+        } catch (Exception e) {
+            producer.send(new ProducerRecord<>(alertTopic, Long.toString(System.currentTimeMillis()),
+                ("Seq: " + seq + " " +  e.getMessage()).getBytes(StandardCharsets.UTF_8)),
+                (event, ex) -> {
+                    if (ex != null) {
+                        logger.error("Cannot send to alert: " + ex.getMessage());
+                        throw new RuntimeException(e.getMessage());
+                    }
+                });
+            throw new Exception(e.getMessage());
+        } finally {
+            executor.shutdown();
+        }
     }
 
     private void run(ServerPair server) {
