@@ -35,5 +35,5 @@
     "set-redis",
     "set-mysql"
   ],
-  "alertTopic": "alert"
+  "enableLog": true
 }
