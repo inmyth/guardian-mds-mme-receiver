@@ -7,14 +7,22 @@ public class Config {
     List<Server> rt;
     Failover failover;
     List<String> topics;
-    String alertTopic;
+    boolean enableLog;
 
-    public Config(List<Server> glimpse, List<Server> rt, Failover failover, List<String> topics, String alertTopic) {
+    public Config(List<Server> glimpse, List<Server> rt, Failover failover, List<String> topics, boolean enableLog) {
         this.glimpse = glimpse;
         this.rt = rt;
         this.failover = failover;
         this.topics = topics;
-        this.alertTopic = alertTopic;
+        this.enableLog = enableLog;
+    }
+
+    public boolean isEnableLog() {
+        return enableLog;
+    }
+
+    public void setEnableLog(boolean enableLog) {
+        this.enableLog = enableLog;
     }
 
     public List<String> getTopics() {
@@ -49,14 +57,6 @@ public class Config {
 
     public void setFailover(Failover failover) {
         this.failover = failover;
-    }
-
-    public String getAlertTopic() {
-        return alertTopic;
-    }
-
-    public void setAlertTopic(String alertTopic) {
-        this.alertTopic = alertTopic;
     }
 
     public static class Server {
