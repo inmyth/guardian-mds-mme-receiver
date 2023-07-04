@@ -17,10 +17,8 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.sql.Timestamp;
-import java.util.Date;
 import java.util.List;
 import java.util.Properties;
 import java.util.Queue;
@@ -85,16 +83,14 @@ public class Main {
         ItchClient itchClient = new ItchClient(new ConnectionListener() {
             @Override
             public void onDataReceived(Connection connection, ByteBuffer byteBuffer, long l) {
-                Message parsed = messageFactory.parse(byteBuffer);
-                long localMs = System.currentTimeMillis();
-                if (parsed != null) {
-                    if (enableLog) {
-                        logMessage(parsed, l, localMs);
-                    }
-                    byte[] content = new byte[byteBuffer.remaining()];
-                    byteBuffer.get(content);
-                    rawMessages.add(new RawMessage(l, parsed.getMsgType(), content));
+                if (enableLog) {
+                    long localMs = System.currentTimeMillis();
+                    Message parsed = messageFactory.parse(byteBuffer);
+                    logMessage(parsed, l, localMs);
                 }
+                byte[] content = new byte[byteBuffer.remaining()];
+                byteBuffer.get(content);
+                rawMessages.add(new RawMessage(l, content));
             }
 
             @Override
@@ -282,7 +278,7 @@ public class Main {
                     }
                     byte[] content = new byte[byteBuffer.remaining()];
                     byteBuffer.get(content);
-                    rawMessages.add(new RawMessage(l, parsed.getMsgType(), content));
+                    rawMessages.add(new RawMessage(l, content));
                     if (parsed.getMsgType() == 71) {
                         GlimpseSnapshotMessage m = (GlimpseSnapshotMessage) parsed;
                         seq = Long.parseLong(new String(m.getItchSequenceNumber()));
@@ -373,7 +369,7 @@ public class Main {
                             if (ex != null)
                                 ex.printStackTrace();
                             else
-                                System.out.printf("Produced event to topic %s: key = %-10s value = %s%n", t, rawMessage.sequenceNumber, rawMessage.msgType);
+                                System.out.printf("Produced event to topic %s: key = %-10s", t, rawMessage.sequenceNumber);
                         });
                     }
                 } catch (InterruptedException e) {
@@ -421,11 +417,9 @@ public class Main {
     public static class RawMessage{
         public byte[] content;
         public long sequenceNumber;
-        public byte msgType;
 
-        public RawMessage(long sequenceNumber, byte msgType, byte[] content){
+        public RawMessage(long sequenceNumber, byte[] content){
             this.sequenceNumber = sequenceNumber;
-            this.msgType = msgType;
             this.content = content;
         }
     }
