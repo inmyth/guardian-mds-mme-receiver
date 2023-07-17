@@ -8,8 +8,13 @@ import com.nasdaq.ouchitch.itch.impl.ItchMessageFactorySet;
 import com.nasdaq.ouchitch.utils.ClientException;
 import com.nasdaq.ouchitch.utils.ConnectContextImpl;
 import genium.trading.itch42.messages.*;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,6 +24,8 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.Paths;
 import java.sql.Timestamp;
+import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
 import java.util.Queue;
@@ -46,8 +53,41 @@ public class Main {
         try (InputStream inputStream = new FileInputStream("config/kafka.properties")) {
             kafkaProps.load(inputStream);
         }
+        kafkaProps.setProperty(ConsumerConfig.GROUP_ID_CONFIG, config.topics.get(0));
+        long initialSeq = getLastSeq(kafkaProps, config.topics.get(0));
         Main main = new Main(config, kafkaProps);
-        main.start();
+        main.start(initialSeq);
+    }
+
+    private static long getLastSeq(Properties properties, String topic) {
+        long res = 0L;
+        try (KafkaConsumer<String, byte[]> consumer = new KafkaConsumer<>(properties)) {
+            TopicPartition topicPartition = new TopicPartition(topic, 0);
+            consumer.assign(Collections.singletonList(topicPartition));
+            consumer.listTopics();
+            // Seek to the last offset
+            consumer.seekToEnd(Collections.singletonList(topicPartition));
+            long lastOffset = consumer.position(topicPartition) - 1;
+            if (lastOffset < 0) {
+                throw new Exception("Offset is negative");
+            }
+            consumer.seek(topicPartition, lastOffset);
+            boolean keepConsuming = true;
+            while (keepConsuming) {
+                ConsumerRecords<String, byte[]> records = consumer.poll(Duration.ZERO);
+                if (records.isEmpty()) {
+                    keepConsuming = false;
+                }
+                for (ConsumerRecord<String, byte[]> record : records) {
+                    System.out.println("Last sequence: " + record.key());
+                    res = Long.parseLong(record.key());
+                }
+                consumer.commitSync();
+            }
+        } catch (Exception e) {
+            res = 0L;
+        }
+        return res;
     }
 
     private LinkedBlockingQueue<ServerPair> toQueue(ServerPair sp, int retry) {
@@ -327,7 +367,8 @@ public class Main {
         return itchClient;
     }
 
-    public void start() {
+    public void start(long initialSeq) {
+        this.seq = initialSeq;
         ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
         executor.scheduleAtFixedRate(() -> {
             SystemMessage msg = systemMessages.poll();
