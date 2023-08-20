@@ -85,6 +85,7 @@ public class Main {
                 consumer.commitSync();
             }
         } catch (Exception e) {
+            logger.info("Kafka exception: {}", e.getLocalizedMessage());
             res = 0L;
         }
         return res;
