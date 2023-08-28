@@ -74,7 +74,7 @@ public class Main {
             consumer.seek(topicPartition, lastOffset);
             boolean keepConsuming = true;
             while (keepConsuming) {
-                ConsumerRecords<String, byte[]> records = consumer.poll(Duration.ZERO);
+                ConsumerRecords<String, byte[]> records = consumer.poll(Duration.ofMinutes(100L));
                 if (records.isEmpty()) {
                     keepConsuming = false;
                 }
@@ -85,7 +85,7 @@ public class Main {
                 consumer.commitSync();
             }
         } catch (Exception e) {
-            logger.info("Kafka exception: {}", e.getLocalizedMessage());
+            logger.info("Last res: {}, Kafka exception: {},", res, e.getLocalizedMessage());
             res = 0L;
         }
         return res;
