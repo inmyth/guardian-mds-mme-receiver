@@ -9,26 +9,17 @@ import com.nasdaq.ouchitch.utils.ClientException;
 import com.nasdaq.ouchitch.utils.ConnectContextImpl;
 import genium.trading.itch42.messages.*;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Paths;
 import java.sql.Timestamp;
-import java.time.Duration;
-import java.util.Collections;
-import java.util.List;
-import java.util.Properties;
-import java.util.Queue;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -45,6 +36,7 @@ public class Main {
     private final List<String> topics;
     private final boolean enableLog;
     private static final Logger logger = LoggerFactory.getLogger(Main.class);
+    private static String seqFile = "seq.txt";
 
     public static void main(String[] args) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
@@ -54,39 +46,31 @@ public class Main {
             kafkaProps.load(inputStream);
         }
         kafkaProps.setProperty(ConsumerConfig.GROUP_ID_CONFIG, config.topics.get(0));
-        long initialSeq = getLastSeq(kafkaProps, config.topics.get(0));
+        long initialSeq = getLastSeq(seqFile);
         Main main = new Main(config, kafkaProps);
         main.start(initialSeq);
     }
 
-    private static long getLastSeq(Properties properties, String topic) {
+    private static void writeSeqToFile(Long seq, String fileName) throws IOException {
+        byte[] buffer = seq.toString().getBytes();
+        FileChannel rwChannel = new RandomAccessFile(fileName, "rw").getChannel();
+        ByteBuffer wrBuf = rwChannel.map(FileChannel.MapMode.READ_WRITE, 0, buffer.length);
+        wrBuf.put(buffer);
+        rwChannel.close();
+    }
+
+    private static long getLastSeq(String fileName) {
         long res = 0L;
-        try (KafkaConsumer<String, byte[]> consumer = new KafkaConsumer<>(properties)) {
-            TopicPartition topicPartition = new TopicPartition(topic, 0);
-            consumer.assign(Collections.singletonList(topicPartition));
-            consumer.listTopics();
-            // Seek to the last offset
-            consumer.seekToEnd(Collections.singletonList(topicPartition));
-            long lastOffset = consumer.position(topicPartition) - 1;
-            if (lastOffset < 0) {
-                throw new Exception("Offset is negative");
+        try {
+            File myObj = new File(fileName);
+            Scanner myReader = new Scanner(myObj);
+            while (myReader.hasNextLine()) {
+                String data = myReader.nextLine();
+                res = Long.parseLong(data);
             }
-            consumer.seek(topicPartition, lastOffset);
-            boolean keepConsuming = true;
-            while (keepConsuming) {
-                ConsumerRecords<String, byte[]> records = consumer.poll(Duration.ofMinutes(100L));
-                if (records.isEmpty()) {
-                    keepConsuming = false;
-                }
-                for (ConsumerRecord<String, byte[]> record : records) {
-                    System.out.println("Last sequence: " + record.key());
-                    res = Long.parseLong(record.key());
-                }
-                consumer.commitSync();
-            }
+            myReader.close();
         } catch (Exception e) {
-            logger.info("Last res: {}, Kafka exception: {},", res, e.getLocalizedMessage());
-            res = 0L;
+            logger.error("Cannot read file " + e.getLocalizedMessage());
         }
         return res;
     }
@@ -124,6 +108,7 @@ public class Main {
         ItchClient itchClient = new ItchClient(new ConnectionListener() {
             @Override
             public void onDataReceived(Connection connection, ByteBuffer byteBuffer, long l) {
+                seq = l;
                 if (enableLog) {
                     long localMs = System.currentTimeMillis();
                     Message parsed = messageFactory.parse(byteBuffer);
@@ -370,7 +355,7 @@ public class Main {
 
     public void start(long initialSeq) {
         this.seq = initialSeq;
-        ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
+        ScheduledExecutorService executor = Executors.newScheduledThreadPool(3);
         executor.scheduleAtFixedRate(() -> {
             SystemMessage msg = systemMessages.poll();
 
@@ -401,30 +386,45 @@ public class Main {
                     glimpseClient.close();
                 }
             }
-        }, 0, 1000, TimeUnit.MILLISECONDS);
+        }, 0, 100, TimeUnit.MILLISECONDS);
         executor.execute(() -> {
             while (true) {
                 try {
                     RawMessage rawMessage = rawMessages.take();
                     for (String t: topics) {
                         producer.send(new ProducerRecord<>(t, Long.toString(rawMessage.sequenceNumber), rawMessage.content), (event, ex) -> {
-                            if (ex != null)
-                                ex.printStackTrace();
-                            else
-                                System.out.printf("Produced event to topic %s: key = %-10s", t, rawMessage.sequenceNumber);
+                        logger.info("Kafka sent seq : " + rawMessage.sequenceNumber);
+                            if (ex != null) {
+                                logger.error("Kafka produce exception : " + ex.getLocalizedMessage());
+                            }
                         });
                     }
                 } catch (InterruptedException e) {
+                    logger.error("Kafka Interrupted exception: " + e.getLocalizedMessage());
                     throw new RuntimeException(e);
                 }
             }
         });
-        systemMessages.add(new SystemMessage.Restart());
+        executor.execute(() -> {
+            while (true) {
+                try {
+                    writeSeqToFile(seq, seqFile);
+                } catch (Exception e) {
+                    logger.error("Cannot write file " + e.getMessage());
+                    throw new RuntimeException(e);
+                }
+            }
+        });
+        if (seq == 0) {
+            systemMessages.add(new SystemMessage.Restart());
+        } else {
+            systemMessages.add(new SystemMessage.RestartRt());
+        }
     }
 
     private void run(ServerPair server) {
-        ConnectContextImpl glimpseCtx = createContext(server.glimpse, seq + 1);
-        ConnectContextImpl rtCtx = createContext(server.rt, -100); // seq is not needed here
+        ConnectContextImpl glimpseCtx = createContext(server.glimpse, 1);
+        ConnectContextImpl rtCtx = createContext(server.rt, -100); // seq for rt is not needed here
         glimpseClient =  createGlimpseClient(rtCtx);
         try {
             this.glimpseId = glimpseClient.connect(glimpseCtx);
@@ -437,7 +437,7 @@ public class Main {
     private void runRt(ConnectContextImpl rtCtx) {
         ItchClient rtClient = createRtClient();
         try {
-            logger.info("Connecting to RT");
+            logger.info("Connecting to RT at seq: " + seq);
             rtCtx.setSequenceNumber(seq);
             rtClient.connect(rtCtx);
         } catch (ClientException e) {
