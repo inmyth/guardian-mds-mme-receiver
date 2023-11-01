@@ -21,6 +21,7 @@ import java.nio.file.Paths;
 import java.sql.Timestamp;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -37,7 +38,7 @@ public class Main {
     private final boolean enableLog;
     private static final Logger logger = LoggerFactory.getLogger(Main.class);
     private static String seqFile = "seq.txt";
-
+    AtomicBoolean keepRunning = new AtomicBoolean(true);
     public static void main(String[] args) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
         Config config = mapper.readValue(Paths.get("config/application.json").toFile(), Config.class);
@@ -49,14 +50,15 @@ public class Main {
         long initialSeq = getLastSeq(seqFile);
         Main main = new Main(config, kafkaProps);
         main.start(initialSeq);
+
     }
 
-    private static void writeSeqToFile(Long seq, String fileName) throws IOException {
-        byte[] buffer = seq.toString().getBytes();
-        FileChannel rwChannel = new RandomAccessFile(fileName, "rw").getChannel();
-        ByteBuffer wrBuf = rwChannel.map(FileChannel.MapMode.READ_WRITE, 0, buffer.length);
-        wrBuf.put(buffer);
-        rwChannel.close();
+    private static void writeSeqToFile(Long seq, String fileName)  {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(fileName, false))) {
+            writer.write(seq.toString());
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private static long getLastSeq(String fileName) {
@@ -406,7 +408,7 @@ public class Main {
             }
         });
         executor.execute(() -> {
-            while (true) {
+            while (keepRunning.get()) {
                 try {
                     writeSeqToFile(seq, seqFile);
                 } catch (Exception e) {
@@ -415,11 +417,22 @@ public class Main {
                 }
             }
         });
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            keepRunning.set(false);
+            try {
+                try (BufferedWriter writer = new BufferedWriter(new FileWriter(seqFile, false))) {
+                    writer.write(String.valueOf(seq));
+                }
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }));
         if (seq == 0) {
             systemMessages.add(new SystemMessage.Restart());
         } else {
             systemMessages.add(new SystemMessage.RestartRt());
         }
+
     }
 
     private void run(ServerPair server) {
