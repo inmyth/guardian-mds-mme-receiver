@@ -54,8 +54,10 @@ public class Main {
     }
 
     private static void writeSeqToFile(Long seq, String fileName)  {
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(fileName, false))) {
-            writer.write(seq.toString());
+        try(FileChannel rwChannel = new RandomAccessFile(fileName, "rw").getChannel()){
+            byte[] buffer = seq.toString().getBytes();
+            ByteBuffer wrBuf = rwChannel.map(FileChannel.MapMode.READ_WRITE, 0, buffer.length);
+            wrBuf.put(buffer);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
