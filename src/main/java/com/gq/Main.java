@@ -392,7 +392,7 @@ public class Main {
             }
         }, 0, 100, TimeUnit.MILLISECONDS);
         executor.execute(() -> {
-            while (true) {
+            while (keepRunning.get()) {
                 try {
                     RawMessage rawMessage = rawMessages.take();
                     for (String t: topics) {
