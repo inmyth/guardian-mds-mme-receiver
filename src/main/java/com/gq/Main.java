@@ -53,16 +53,6 @@ public class Main {
 
     }
 
-    private static void writeSeqToFile(Long seq, String fileName)  {
-        try(FileChannel rwChannel = new RandomAccessFile(fileName, "rw").getChannel()){
-            byte[] buffer = seq.toString().getBytes();
-            ByteBuffer wrBuf = rwChannel.map(FileChannel.MapMode.READ_WRITE, 0, buffer.length);
-            wrBuf.put(buffer);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
     private static long getLastSeq(String fileName) {
         long res = 0L;
         try {
@@ -359,7 +349,7 @@ public class Main {
 
     public void start(long initialSeq) {
         this.seq = initialSeq;
-        ScheduledExecutorService executor = Executors.newScheduledThreadPool(3);
+        ScheduledExecutorService executor = Executors.newScheduledThreadPool(2);
         executor.scheduleAtFixedRate(() -> {
             SystemMessage msg = systemMessages.poll();
 
@@ -409,26 +399,6 @@ public class Main {
                 }
             }
         });
-        executor.execute(() -> {
-            while (keepRunning.get()) {
-                try {
-                    writeSeqToFile(seq, seqFile);
-                } catch (Exception e) {
-                    logger.error("Cannot write file " + e.getMessage());
-                    throw new RuntimeException(e);
-                }
-            }
-        });
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-            keepRunning.set(false);
-            try {
-                try (BufferedWriter writer = new BufferedWriter(new FileWriter(seqFile, false))) {
-                    writer.write(String.valueOf(seq));
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }));
         if (seq == 0) {
             systemMessages.add(new SystemMessage.Restart());
         } else {
